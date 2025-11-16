@@ -27,12 +27,18 @@ venv/
 .vscode/
 
 # Local data and models (IMPORTANT)
-# We add exceptions for placeholder READMEs
-data/*
-!data/models/README.md
-!data/raw/README.md
-!data/processed/README.md
-!data/examples/README.md
+# We ignore large model files and raw datasets,
+# but we track configs and metrics.
+
+# Ignore all trained model files
+*.pt
+*.pkl
+
+# Ignore large raw data files
+data/raw/tox21.csv.gz
+data/raw/training_molecules.txt
+data/raw/validation_molecules.txt
+data/raw/test_molecules.txt
 
 # Logs and outputs
 logs/

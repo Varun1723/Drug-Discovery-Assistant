@@ -2,7 +2,7 @@
 """
 Training script for Toxicity Classifier (Binary Classification)
 """
-
+import json
 import os
 import sys
 import argparse
@@ -76,22 +76,38 @@ def train_toxicity_model(data_path: Path, output_dir: Path):
     )
     model.fit(X_train, y_train)
 
-    # Test model
+    # --- Test model ---
     preds = model.predict(X_test)
     acc = accuracy_score(y_test, preds)
-    logger.info(f"Model Accuracy on test set: {acc:.2%}")
-    logger.info("\nClassification Report:\n" + classification_report(y_test, preds))
+    # Get the report as a string to print
+    report_str = classification_report(y_test, preds)
+    # Get the report as a dictionary to save
+    report_dict = classification_report(y_test, preds, output_dict=True)
 
-    # Save model
+    logger.info(f"Model Accuracy on test set: {acc:.2%}")
+    logger.info("\nClassification Report:\n" + report_str)
+
+    # --- Save model ---
     output_dir.mkdir(parents=True, exist_ok=True)
     save_path = output_dir / "toxicity_xgb_model.pkl"
     joblib.dump(model, save_path)
-
     logger.info(f"✓ Toxicity Model saved to {save_path}")
 
+    # --- NEW: Save metrics to JSON ---
+    metrics = {
+        "accuracy": acc,
+        "classification_report": report_dict,
+        "n_samples_train": len(X_train),
+        "n_samples_test": len(X_test)
+    }
+    metrics_path = output_dir / "toxicity_model_metrics.json"
+    with open(metrics_path, 'w') as f:
+        json.dump(metrics, f, indent=2)
+
+    logger.info(f"✓ Toxicity metrics saved to {metrics_path}")
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    # Update the default path to point to the new file
+    parser = argparse.ArgumentParser(description="Train property predictor models")
     parser.add_argument('--data_file', type=Path, default=project_root / "data" / "raw" / "tox21.csv.gz")
     parser.add_argument('--output_dir', type=Path, default=project_root / "data" / "models" / "predictor_toxicity")
     args = parser.parse_args()
