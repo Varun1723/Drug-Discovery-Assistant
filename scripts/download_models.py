@@ -434,6 +434,18 @@ results = predictor.predict(molecules=["CCO", "CC(=O)O"])
                 json.dump(dataset_info, f, indent=2)
 
             logger.info("✓ Real sample data downloaded successfully")
+            # --- START OF NEW CODE ---
+            logger.info("Downloading real toxicity data (Tox21)...")
+            tox_url = "https://deepchemdata.s3-us-west-1.amazonaws.com/datasets/tox21.csv.gz"
+            tox_path = self.data_dir / "tox21.csv.gz"
+            try:
+                # Use urllib to download
+                with urllib.request.urlopen(tox_url) as response, open(tox_path, 'wb') as out_file:
+                    shutil.copyfileobj(response, out_file)
+                logger.info("✓ Tox21 dataset downloaded successfully.")
+            except Exception as e:
+                logger.error(f"Failed to download Tox21 dataset: {e}")
+            # --- END OF NEW CODE ---
             return True
 
         except Exception as e:

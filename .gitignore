@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.cpython-*.pyc
+
+# Distribution / build artifacts
+.eggs/
+build/
+dist/
+*.egg-info/
+sdist/
+wheel/
+*.manifest
+*.spec
+
+# Python virtual environments
+.env
+.venv
+env/
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# VS Code
+.vscode/
+
+# Local data and models (IMPORTANT)
+# We add exceptions for placeholder READMEs
+data/*
+!data/models/README.md
+!data/raw/README.md
+!data/processed/README.md
+!data/examples/README.md
+
+# Logs and outputs
+logs/
+outputs/
+demo_report.json
+*.log
+*.tar.gz
+
+# OS-specific files
+.DS_Store
+Thumbs.db
