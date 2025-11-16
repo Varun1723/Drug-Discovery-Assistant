@@ -90,15 +90,31 @@ class DrugDiscoveryApp:
     
     def initialize_session_state(self):
         """Initialize session state variables."""
+        # --- 1. SET DEFAULTS FIRST ---
+        if 'settings_enable_lipinski' not in st.session_state:
+            st.session_state.settings_enable_lipinski = True
+        if 'settings_enable_pains' not in st.session_state:
+            st.session_state.settings_enable_pains = True
+        if 'settings_max_mw' not in st.session_state:
+            st.session_state.settings_max_mw = 500.0
+        if 'settings_memory_override' not in st.session_state:
+            st.session_state.settings_memory_override = "Auto (Recommended)"
+        # --- 2. NOW, INITIALIZE APP STATE ---
         if 'generated_molecules' not in st.session_state:
             st.session_state.generated_molecules = []
         if 'prediction_results' not in st.session_state:
             st.session_state.prediction_results = {}
         if 'protein_structures' not in st.session_state:
             st.session_state.protein_structures = {}
+        # --- 3. LASTLY, READ THE SETTINGS TO CONFIGURE THE APP ---
         if 'gpu_available' not in st.session_state:
-            st.session_state.gpu_available = self.check_gpu_availability()
-            # st.session_state.gpu_available = False # <-- THIS IS YOUR CPU FIX
+            override = st.session_state.settings_memory_override
+            if override == "CPU Only":
+                st.session_state.gpu_available = False
+            else:
+                st.session_state.gpu_available = self.check_gpu_availability()
+                if override == "Light (4GB)" and st.session_state.gpu_available:
+                    st.session_state.gpu_available = 4.0 # Force light mode
         if 'memory_mode' not in st.session_state:
             st.session_state.memory_mode = self.determine_memory_mode()
     
@@ -230,19 +246,23 @@ class DrugDiscoveryApp:
 
     def check_lipinski(self, mol):
         """Check Lipinski's Rule of 5."""
+        # Get settings from session state
+        max_mw = st.session_state.settings_max_mw
+
         mw = Descriptors.MolWt(mol)
         logp = Descriptors.MolLogP(mol)
         hbd = Descriptors.NumHDonors(mol)
         hba = Descriptors.NumHAcceptors(mol)
 
         violations = 0
-        if mw > 500: violations += 1
+        # Use the setting in our check
+        if mw > max_mw: violations += 1
         if logp > 5: violations += 1
         if hbd > 5: violations += 1
         if hba > 10: violations += 1
 
         return {
-            "MW": (mw, mw <= 500),
+            "MW": (mw, mw <= max_mw, max_mw), # Return the limit we used
             "LogP": (logp, logp <= 5),
             "HBD": (hbd, hbd <= 5),
             "HBA": (hba, hba <= 10),
@@ -305,7 +325,7 @@ class DrugDiscoveryApp:
                 "🏠 Home": "home",
                 "🧪 Molecule Generator": "generator",
                 "📊 Property Prediction": "predictor", 
-                "🦠 Toxicity Analysis": "toxicity",
+                "🛡️ Safety & Analysis": "toxicity",
                 "🧬 Protein Structure": "protein",
                 "📁 Batch Analysis": "batch",
                 "⚙️ Settings": "settings"
@@ -373,7 +393,7 @@ class DrugDiscoveryApp:
         with col2:
             st.metric("Predictions Made", len(st.session_state.prediction_results))
         with col3:
-            st.metric("Protein Structures", len(st.session_state.protein_structures))
+            st.metric("Protein Structures", len(st.session_state.protein_structures.keys()))
         with col4:
             memory_mode = st.session_state.memory_mode.upper()
             st.metric("Memory Mode", memory_mode)
@@ -633,7 +653,7 @@ class DrugDiscoveryApp:
                     else:
                         df = pd.DataFrame(results_list)
                         st.dataframe(df, use_container_width=True)
-                        
+                        st.session_state.prediction_results = df.to_dict('records')
                         csv = df.to_csv(index=False)
                         st.download_button(
                             label="📥 Download Results (CSV)",
@@ -648,69 +668,107 @@ class DrugDiscoveryApp:
 
     def render_toxicity_page(self):
         """Render the detailed safety analysis page."""
-        st.markdown("## 🛡️ Safety & Toxicity Analysis")
+        st.markdown("## 🛡️ Safety & Analysis")
 
-        # Get molecules from session state
-        if 'generated_molecules' not in st.session_state or not st.session_state.generated_molecules:
-            st.info("No molecules to analyze. Please go to 'Molecule Generator' first.")
-            return
+        # --- NEW INPUT LOGIC ---
+        st.markdown("#### Select Molecule for Analysis")
 
-        # Load tokenizer to convert SELFIES -> SMILES
-        tokenizer, _, _ = self.load_generator_model()
-        if not tokenizer:
-            st.error("Tokenizer failed to load.")
-            return
+        # Get default SMILES (if any)
+        default_smiles = st.session_state.get("smiles_to_analyze", "")
 
-        # Dropdown to select a molecule
-        smiles_list = [tokenizer.selfies_to_smiles(s) for s in st.session_state.generated_molecules]
-        selected_smiles = st.selectbox("Select a molecule to analyze:", smiles_list)
+        # 1. ADD RADIO BUTTONS
+        input_method = st.radio(
+            "Input method:",
+            ["Single SMILES", "From Generated"],
+            horizontal=True,
+            key="analysis_input_method" # Use a unique key
+        )
 
-        if selected_smiles:
+        final_smiles_to_analyze = None
+
+        if input_method == "Single SMILES":
+            manual_smiles = st.text_input("Enter SMILES to analyze:", value=default_smiles, placeholder="CCO")
+            if manual_smiles:
+                final_smiles_to_analyze = manual_smiles
+
+        elif input_method == "From Generated":
+            generated_smiles_list = []
+            if 'generated_molecules' in st.session_state and st.session_state.generated_molecules:
+                tokenizer, _, _ = self.load_generator_model()
+                if tokenizer:
+                    generated_smiles_list = [tokenizer.selfies_to_smiles(s) for s in st.session_state.generated_molecules]
+
+            selected_smiles = st.selectbox(
+                "Or select from your last generated batch:", 
+                generated_smiles_list, 
+                index=None, 
+                placeholder="Select a generated molecule..."
+            )
+            if selected_smiles:
+                final_smiles_to_analyze = selected_smiles
+
+        st.markdown("---")
+
+        # 2. ADD ANALYZE BUTTON
+        if st.button("🛡️ Analyze Molecule", type="primary"):
+            if not final_smiles_to_analyze:
+                st.error("Please enter or select a molecule to analyze.")
+                return
+
+            # --- RENDER ANALYSIS ---
+            st.session_state.smiles_to_analyze = final_smiles_to_analyze
+            mol = Chem.MolFromSmiles(final_smiles_to_analyze)
+
             col1, col2 = st.columns([1, 2])
 
             with col1:
                 st.markdown("### Structure")
-                mol = Chem.MolFromSmiles(selected_smiles)
                 if mol:
-                    st.image(Draw.MolToImage(mol), caption=selected_smiles)
+                    st.image(Draw.MolToImage(mol), caption=final_smiles_to_analyze)
                 else:
-                    st.error("Invalid Molecule")
+                    st.error("Invalid SMILES. Cannot generate structure.")
 
             with col2:
-                st.markdown("### 🚦 Lipinski's Rule of 5")
-                if mol:
-                    rules = self.check_lipinski(mol)
-
-                    # Display rules as metrics
-                    r1, r2 = st.columns(2)
-                    r1.metric("Molecular Weight", f"{rules['MW'][0]:.1f}", "≤ 500" if rules['MW'][1] else "Fail", delta_color="normal" if rules['MW'][1] else "inverse")
-                    r2.metric("LogP", f"{rules['LogP'][0]:.1f}", "≤ 5" if rules['LogP'][1] else "Fail", delta_color="normal" if rules['LogP'][1] else "inverse")
-
-                    r3, r4 = st.columns(2)
-                    r3.metric("H-Bond Donors", rules['HBD'][0], "≤ 5" if rules['HBD'][1] else "Fail", delta_color="normal" if rules['HBD'][1] else "inverse")
-                    r4.metric("H-Bond Acceptors", rules['HBA'][0], "≤ 10" if rules['HBA'][1] else "Fail", delta_color="normal" if rules['HBA'][1] else "inverse")
-
-                    if rules['Pass']:
-                        st.success(f"✅ Drug-like! (Violations: {rules['Violations']})")
+                # Lipinski Check
+                if st.session_state.settings_enable_lipinski:
+                    st.markdown("### 🚦 Lipinski's Rule of 5")
+                    if not mol:
+                        st.warning("Cannot calculate: Invalid SMILES.")
                     else:
-                        st.warning(f"⚠️ Not Drug-like (Violations: {rules['Violations']})")
+                        rules = self.check_lipinski(mol)
+                        r1, r2 = st.columns(2)
+                        r1.metric(f"Molecular Weight", f"{rules['MW'][0]:.1f}", f"≤ {rules['MW'][2]}" if rules['MW'][1] else "Fail", delta_color="normal" if rules['MW'][1] else "inverse")
+                        r2.metric("LogP", f"{rules['LogP'][0]:.1f}", "≤ 5" if rules['LogP'][1] else "Fail", delta_color="normal" if rules['LogP'][1] else "inverse")
+                        r3, r4 = st.columns(2)
+                        r3.metric("H-Bond Donors", rules['HBD'][0], "≤ 5" if rules['HBD'][1] else "Fail", delta_color="normal" if rules['HBD'][1] else "inverse")
+                        r4.metric("H-Bond Acceptors", rules['HBA'][0], "≤ 10" if rules['HBA'][1] else "Fail", delta_color="normal" if rules['HBA'][1] else "inverse")
 
+                        if rules['Pass']:
+                            st.success(f"✅ Drug-like! (Violations: {rules['Violations']})")
+                        else:
+                            st.warning(f"⚠️ Not Drug-like (Violations: {rules['Violations']})")
+
+                st.markdown("---") # Added fix 1
+
+                # Toxicity Check
                 st.markdown("### ☠️ Toxicity Model Prediction")
-                # Re-run the toxicity model for this single molecule
                 tox_path = Path("data/models/predictor_toxicity/toxicity_xgb_model.pkl")
                 if tox_path.exists():
                     model = joblib.load(tox_path)
-                    fp = self.get_fingerprint(selected_smiles)
+                    fp = self.get_fingerprint(final_smiles_to_analyze)
                     if fp is not None:
                         pred = model.predict(fp)[0]
                         probs = model.predict_proba(fp)[0]
-
                         if pred == 1:
                             st.error(f"**Prediction: TOXIC** (Confidence: {probs[1]:.1%})")
                         else:
                             st.success(f"**Prediction: SAFE** (Confidence: {probs[0]:.1%})")
+                    else:
+                        st.warning("Cannot predict: Invalid SMILES.")
                 else:
-                    st.info("Toxicity model not trained.")
+                    st.info("Toxicity model not trained. Run 'scripts/train_toxicity.py'.")
+
+        # --- END OF BUTTON BLOCK ---
 
     def render_protein_page(self):
         """Render the protein structure prediction page."""
@@ -756,6 +814,7 @@ class DrugDiscoveryApp:
                         # Save the PDB string and sequence to the session state
                         st.session_state.pdb_string = response.text
                         st.session_state.current_sequence = sequence
+                        st.session_state.protein_structures[sequence] = response.text
                         st.success("✅ Structure predicted successfully via API!")
                     else:
                         st.error(f"API Error (Status {response.status_code}): {response.text}")
@@ -846,54 +905,60 @@ class DrugDiscoveryApp:
     def render_settings_page(self):
         """Render the settings page."""
         st.markdown("## ⚙️ Settings")
+
+        # --- Safety & Filtering Section ---
+        st.markdown("### Safety & Filtering")
+        st.info("These settings control the filters used in the 'Safety & Toxicity Analysis' page.")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            # This checkbox IS TIED to the session state
+            st.checkbox(
+                "Enable Lipinski Filter", 
+                key="settings_enable_lipinski", # This key must match initialize_session_state
+                help="Show/Hide the Lipinski's Rule of 5 analysis."
+            )
+
+            st.checkbox(
+                "Enable PAINS Filter", 
+                key="settings_enable_pains", # This key must match initialize_session_state
+                help="Show/Hide the PAINS (Pan-Assay Interference) filter. (Not yet implemented)"
+            )
+
+        with col2:
+            # This slider IS TIED
+            st.slider(
+                "Max Molecular Weight (for Lipinski)", 
+                min_value=100.0, 
+                max_value=1000.0, 
+                key="settings_max_mw", # This key must match initialize_session_state
+                step=10.0
+            )
         
-        # System settings
+        st.markdown("---") # Separator
+        # --- System Configuration ---
         st.markdown("### System Configuration")
         col1, col2 = st.columns(2)
-        
+
         with col1:
             st.markdown("#### Memory & Performance")
-            memory_mode_override = st.selectbox(
+            st.selectbox(
                 "Memory Mode Override:",
                 ["Auto (Recommended)", "CPU Only", "Light (4GB)", "Medium (8GB)", "Full (12GB+)"],
-                help="Override automatic memory mode detection"
+                key="settings_memory_override", # <-- This is the fix
+                help="Override automatic memory mode detection. (Requires app restart)"
             )
-            
-            max_batch_size = st.slider("Maximum Batch Size", 1, 32, 4)
-            enable_mixed_precision = st.checkbox("Enable Mixed Precision", True)
-            auto_clear_cache = st.checkbox("Auto Clear GPU Cache", True)
-        
+            st.slider("Maximum Batch Size", 1, 32, 4, disabled=True)
+
         with col2:
             st.markdown("#### Model Preferences")
-            default_generator = st.selectbox(
-                "Default Generator:",
-                ["Lightweight LSTM", "Small Transformer", "GPT-2"]
-            )
-            
-            default_predictor = st.selectbox(
-                "Default Predictor:",
-                ["Fingerprint + XGBoost", "Graph Neural Network", "DeepChem"]
-            )
-            
-            default_tokenizer = st.selectbox(
-                "Default Tokenizer:",
-                ["SELFIES", "SMILES Character", "SMILES BPE"]
-            )
-        
-        # Safety settings
-        st.markdown("### Safety & Filtering")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            enable_safety_filter = st.checkbox("Enable Safety Filter", True)
-            enable_pains_filter = st.checkbox("Enable PAINS Filter", True)
-            enable_lipinski_filter = st.checkbox("Enable Lipinski Filter", False)
-        
-        with col2:
-            max_molecular_weight = st.slider("Max Molecular Weight", 100, 1000, 500)
-            min_sa_score = st.slider("Min SA Score", 1, 10, 3)
-            toxicity_threshold = st.slider("Toxicity Threshold", 0.1, 0.9, 0.5)
-        
+            st.selectbox("Default Generator:", ["Lightweight LSTM"], disabled=True)
+            st.selectbox("Default Predictor:", ["Fingerprint + XGBoost"], disabled=True)
+            st.selectbox("Default Tokenizer:", ["SELFIES"], disabled=True)
+
+        st.markdown("---") # Separator
+
         # Export/Import settings
         st.markdown("### Data Management")
         col1, col2 = st.columns(2)
