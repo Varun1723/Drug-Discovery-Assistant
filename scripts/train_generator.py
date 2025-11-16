@@ -168,7 +168,8 @@ def train_generator(
                 tokenizer=tokenizer,
                 device=device,
                 mixed_precision=(device == 'cuda' and profile != 'full'),
-                gradient_accumulation_steps=gradient_accumulation
+                gradient_accumulation_steps=gradient_accumulation,
+                max_grad_norm=1.0
             )
             
             # Training loop

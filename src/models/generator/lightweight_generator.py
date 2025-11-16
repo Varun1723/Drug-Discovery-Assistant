@@ -441,6 +441,7 @@ class LightweightTrainer:
         total_loss = 0
         num_batches = 0
         accumulation_count = 0
+        memory_allocated = 0
         
         try:
             from tqdm import tqdm
@@ -522,8 +523,12 @@ class LightweightTrainer:
                 else:
                     loss = self.compute_loss(input_ids, target_ids, attention_mask)
 
-                total_loss += loss.item()
-                num_batches += 1
+                # Check for nan/inf loss
+                if not torch.isfinite(loss):
+                    logger.warning(f"Skipping validation batch, loss is {loss}.")
+                else:
+                    total_loss += loss.item()
+                    num_batches += 1
 
                 if hasattr(pbar, 'set_postfix'):
                     pbar.set_postfix({'val_loss': f'{loss.item():.4f}'})
