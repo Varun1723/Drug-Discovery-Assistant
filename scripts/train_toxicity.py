@@ -64,6 +64,17 @@ def train_toxicity_model(data_path: Path, output_dir: Path):
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+    # --- START OF NEW FIX ---
+    # Calculate the imbalance ratio to fix our "lazy" model
+    # (Count of Safe) / (Count of Toxic)
+    try:
+        scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+        logger.info(f"Dataset is imbalanced. Using scale_pos_weight: {scale_pos_weight:.2f}")
+    except ZeroDivisionError:
+        logger.warning("No toxic samples in training set. Using default weight.")
+        scale_pos_weight = 1
+    # --- END OF NEW FIX ---
+
     logger.info(f"Training XGBoost Classifier on {len(X_train)} samples...")
 
     model = XGBClassifier(
@@ -72,7 +83,8 @@ def train_toxicity_model(data_path: Path, output_dir: Path):
         max_depth=6,
         use_label_encoder=False, # This is deprecated anyway
         eval_metric='logloss',
-        device='cuda' # <-- USE THE GPU!
+        device='cuda', # <-- USE THE GPU!
+        scale_pos_weight=scale_pos_weight  # <-- NEW: Handle class imbalance
     )
     model.fit(X_train, y_train)
 

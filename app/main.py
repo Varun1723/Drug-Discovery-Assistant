@@ -23,7 +23,7 @@ from rdkit.Chem import Draw
 import joblib
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors
-
+import rdkit.Chem.FilterCatalog
 from rdkit.Chem import RDConfig
 sys.path.append(os.path.join(RDConfig.RDContribDir, 'SA_Score'))
 # Note: SAScore is tricky to import in some envs.
@@ -269,6 +269,23 @@ class DrugDiscoveryApp:
             "Violations": violations,
             "Pass": violations <= 1
         }
+
+    def check_pains(self, mol):
+        """
+        Checks a molecule against the PAINS filter.
+        Returns (True, "FilterName") if it matches a PAINS structure.
+        """
+        # Initialize the PAINS filter catalog (we cache this)
+        if not hasattr(self, 'pains_catalog'):
+            params = rdkit.Chem.FilterCatalog.FilterCatalogParams()
+            params.AddCatalog(rdkit.Chem.FilterCatalog.FilterCatalogParams.FilterCatalogs.PAINS)
+            self._pains_catalog = rdkit.Chem.FilterCatalog.FilterCatalog(params)
+        
+        entry = self._pains_catalog.GetFirstMatch(mol)
+        if entry:
+            return (True, entry.GetDescription()) # (IsPAINS, FilterName)
+        else:
+            return (False, "N/A") # (IsPAINS, FilterName)
 
     def render_header(self):
         """Render the application header."""
@@ -749,7 +766,21 @@ class DrugDiscoveryApp:
                             st.warning(f"⚠️ Not Drug-like (Violations: {rules['Violations']})")
 
                 st.markdown("---") # Added fix 1
-
+                # PAINS Check
+                # --- START OF NEW PAINS CODE ---
+                if st.session_state.settings_enable_pains:
+                    st.markdown("### 🔬 PAINS Filter")
+                    if not mol:
+                        st.warning("Cannot calculate: Invalid SMILES.")
+                    else:
+                        is_pains, filter_name = self.check_pains(mol)
+                        if is_pains:
+                            st.error(f"**Alert:** This molecule matches the PAINS filter: **{filter_name}**")
+                            st.caption("PAINS (Pan-Assay Interference Compounds) are known to cause false positives in high-throughput screens.")
+                        else:
+                            st.success("✅ **Pass:** No PAINS structures detected.")
+                    st.markdown("---")
+                # --- END OF NEW PAINS CODE ---
                 # Toxicity Check
                 st.markdown("### ☠️ Toxicity Model Prediction")
                 tox_path = Path("data/models/predictor_toxicity/toxicity_xgb_model.pkl")
