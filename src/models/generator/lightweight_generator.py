@@ -318,7 +318,7 @@ class LightweightTrainer:
         model: LightweightLSTMGenerator,
         tokenizer,
         device: str = 'cuda',
-        mixed_precision: bool = True,
+        mixed_precision: bool = False,
         gradient_accumulation_steps: int = 4,
         max_grad_norm: float = 1.0
     ):

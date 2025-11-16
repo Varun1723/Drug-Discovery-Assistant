@@ -236,19 +236,6 @@ def train_generator(
 
             return True
             
-            # Final save
-            final_path = output_dir / f"generator_{model_type}_final.pt"
-            trainer.save_model(final_path, epoch=epochs, metrics=metrics)
-            
-            logger.info("\n" + "="*60)
-            logger.info("TRAINING COMPLETE")
-            logger.info("="*60)
-            logger.info(f"Best loss: {best_loss:.4f}")
-            logger.info(f"Final model: {final_path}")
-            logger.info(f"Best model: {output_dir / f'generator_{model_type}_best.pt'}")
-            
-            return True
-            
         else:
             logger.error(f"Model type '{model_type}' not yet implemented")
             logger.info("Available: lstm")
@@ -298,7 +285,7 @@ def main():
     parser.add_argument(
         '--learning_rate',
         type=float,
-        default=1e-4,
+        default=1e-5,
         help='Initial learning rate'
     )
     

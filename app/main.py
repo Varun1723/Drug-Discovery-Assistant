@@ -97,8 +97,8 @@ class DrugDiscoveryApp:
         if 'protein_structures' not in st.session_state:
             st.session_state.protein_structures = {}
         if 'gpu_available' not in st.session_state:
-            # st.session_state.gpu_available = self.check_gpu_availability()
-            st.session_state.gpu_available = False # <-- THIS IS YOUR CPU FIX
+            st.session_state.gpu_available = self.check_gpu_availability()
+            # st.session_state.gpu_available = False # <-- THIS IS YOUR CPU FIX
         if 'memory_mode' not in st.session_state:
             st.session_state.memory_mode = self.determine_memory_mode()
     
