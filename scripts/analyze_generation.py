@@ -46,27 +46,6 @@ N_BITS_FP = 2048 # Fingerprint size
 
 # --- HELPER FUNCTIONS ---
 
-@st.cache_resource # Use Streamlit's cache if available, otherwise just run
-def local_cache_resource(func):
-    """A simple decorator to cache heavy objects if Streamlit isn't running."""
-    _cache = {}
-    def wrapper(*args, **kwargs):
-        key = str(args) + str(kwargs)
-        if key not in _cache:
-            _cache[key] = func(*args, **kwargs)
-        return _cache[key]
-    return wrapper
-
-try:
-    import streamlit as st
-    # Use Streamlit's cache if we're in Streamlit
-    load_model = st.cache_resource
-except ImportError:
-    # Use our simple local cache if we're not
-    logger.info("Streamlit not found. Using local cache decorator.")
-    load_model = local_cache_resource
-
-@load_model
 def load_generator():
     """Loads the trained generator model and tokenizer."""
     logger.info("Loading tokenizer...")
@@ -183,7 +162,7 @@ def plot_tsne_chemical_space(fp_generated, fp_train):
     labels = ['Training Data'] * len(fp_train) + ['Generated'] * len(fp_generated)
     
     # Run t-SNE
-    tsne = TSNE(n_components=2, perplexity=30, n_iter=1000, random_state=42)
+    tsne = TSNE(n_components=2, perplexity=30, max_iter=1000, random_state=42)
     tsne_results = tsne.fit_transform(fp_all)
     
     # Create DataFrame for plotting
@@ -244,6 +223,14 @@ def main():
     # 6. Plot t-SNE
     plot_tsne_chemical_space(fp_generated, fp_train)
     
+    # --- 7. Print stats AFTER plotting ---
+    print("\n" + "="*30)
+    print("--- Training Data Stats ---")
+    print(df_train_props.describe())
+    print("\n" + "="*30)
+    print("--- Generated Data Stats ---")
+    print(df_generated_props.describe())
+    print("="*30 + "\n")
     logger.info("Analysis complete. All graphs saved to /outputs/ directory.")
 
 if __name__ == "__main__":
