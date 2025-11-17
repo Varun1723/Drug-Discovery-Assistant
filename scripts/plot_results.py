@@ -67,57 +67,55 @@ def plot_generator_history():
 
 def plot_toxicity_metrics():
     """
-    Plots the precision, recall, and f1-score for the toxicity model.
+    Plots the high-level metrics for the new multi-task toxicity model.
     """
-    logger.info(f"Loading toxicity metrics from {TOXICITY_METRICS_PATH}...")
+    logger.info(f"Loading multi-task toxicity metrics from {TOXICITY_METRICS_PATH}...")
     try:
-        with open(TOXICITY_METRICS_PATH, 'r') as f:
+        # --- UPDATE FILE PATH ---
+        metrics_path = project_root / "data" / "models" / "predictor_multitask_toxicity" / "toxicity_multitask_metrics.json"
+        with open(metrics_path, 'r') as f:
             metrics = json.load(f)
     except FileNotFoundError:
-        logger.error("Toxicity metrics file not found. Run 'train_toxicity.py' first.")
+        logger.error("Toxicity metrics file not found. Run 'scripts/train_multitask.py' first.")
         return
 
-    report = metrics.get('classification_report', {})
-    
-    # We only care about the '0' (Safe) and '1' (Toxic) classes
-    data_to_plot = {
-        '0 (Safe)': report.get('0', {}),
-        '1 (Toxic)': report.get('1', {})
-    }
-    
-    if not data_to_plot['0 (Safe)'] or not data_to_plot['1 (Toxic)']:
-        logger.error("Metrics file is missing classification report data.")
+    # --- NEW PLOTTING LOGIC ---
+    acc = metrics.get('accuracy', 0)
+    auc = metrics.get('weighted_auc', 0)
+
+    if acc == 0 or auc == 0:
+        logger.error("Metrics file is missing 'accuracy' or 'weighted_auc' data.")
         return
 
-    # Convert to DataFrame for easier plotting
-    df = pd.DataFrame(data_to_plot).T.loc[:, ['precision', 'recall', 'f1-score']]
-    df = df.reset_index().melt('index', var_name='Metric', value_name='Score')
-    df = df.rename(columns={'index': 'Class'})
+    # Create a DataFrame for plotting
+    df = pd.DataFrame({
+        'Metric': ['Weighted Avg. AUC', 'Average Accuracy'],
+        'Score': [auc, acc]
+    })
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 6))
     sns.set_theme(style="whitegrid")
-    
-    ax = sns.barplot(data=df, x='Metric', y='Score', hue='Class', palette='deep')
-    
-    plt.title('Toxicity Classifier Performance (Tox21)', fontsize=16, fontweight='bold')
-    plt.xlabel('Metric', fontsize=12)
+
+    ax = sns.barplot(data=df, x='Metric', y='Score', palette='viridis')
+
+    plt.title('Multi-Task Toxicity Classifier Performance (Tox21)', fontsize=16, fontweight='bold')
+    plt.xlabel('')
     plt.ylabel('Score', fontsize=12)
-    plt.ylim(0, 1.05)
-    plt.legend(title='Class', fontsize=12)
-    
+    plt.ylim(0, 1.0)
+
     # Add labels to the bars
     for p in ax.patches:
-        ax.annotate(f'{p.get_height():.2f}',
+        ax.annotate(f'{p.get_height():.3f}',
                     (p.get_x() + p.get_width() / 2., p.get_height()),
                     ha='center', va='center',
                     xytext=(0, 9),
                     textcoords='offset points')
-    
+
     plt.tight_layout()
-    
-    save_path = OUTPUT_DIR / "toxicity_metrics_report.png"
+
+    save_path = OUTPUT_DIR / "toxicity_multitask_metrics_report.png"
     plt.savefig(save_path, dpi=300)
-    logger.info(f"✓ Toxicity metrics plot saved to {save_path}")
+    logger.info(f"✓ New toxicity metrics plot saved to {save_path}")
     plt.close()
 
 def main():

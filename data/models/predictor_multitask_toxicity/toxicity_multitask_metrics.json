@@ -1,0 +1,20 @@
+{
+  "accuracy": 0.6662412252712189,
+  "weighted_auc": 0.7899152708883941,
+  "tasks": [
+    "NR-AR",
+    "NR-AR-LBD",
+    "NR-AhR",
+    "NR-Aromatase",
+    "NR-ER",
+    "NR-ER-LBD",
+    "NR-PPAR-gamma",
+    "SR-ARE",
+    "SR-ATAD5",
+    "SR-HSE",
+    "SR-MMP",
+    "SR-p53"
+  ],
+  "n_samples_train": 6264,
+  "n_samples_test": 1567
+}

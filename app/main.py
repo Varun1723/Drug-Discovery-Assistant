@@ -23,7 +23,6 @@ from rdkit.Chem import Draw
 import joblib
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors
-import rdkit.Chem.FilterCatalog
 from rdkit.Chem import RDConfig
 sys.path.append(os.path.join(RDConfig.RDContribDir, 'SA_Score'))
 # Note: SAScore is tricky to import in some envs.
@@ -305,6 +304,30 @@ class DrugDiscoveryApp:
         logger.info(f"Loaded {len(pains_set)} canonical exact-match PAINS molecules.")
         return pains_set
 
+    @st.cache_data
+    def get_molecule_name(_self, smiles: str):
+        """Uses the PubChem API to find the common name for a SMILES string."""
+        try:
+            # Canonicalize SMILES to make the URL search more robust
+            mol = Chem.MolFromSmiles(smiles)
+            if not mol:
+                return "Unknown"
+            canon_smiles = Chem.MolToSmiles(mol, canonical=True)
+
+            # Make the API request
+            url = f"https{':'}//pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{canon_smiles}/synonyms/json"
+            response = requests.get(url, timeout=5)
+
+            if response.status_code == 200:
+                data = response.json()
+                # Return the first (most common) name
+                return data['InformationList']['Information'][0]['Synonym'][0]
+            else:
+                return "Unknown"
+        except Exception:
+            # Fails for new molecules or if API is down
+            return "Novel Molecule (No PubChem Name)"
+
     def check_pains_exact(self, smiles_to_check: str):
         """
         Checks if a SMILES string is an exact match in our PAINS list.
@@ -555,6 +578,11 @@ class DrugDiscoveryApp:
                             if smiles == "N/A" or smiles == "Invalid SELFIES":
                                 st.warning(f"Could not convert SELFIES to SMILES: {mol_str}")
                             else:
+                                # --- START OF NEW CODE ---
+                                # Get the name and display it
+                                name = self.get_molecule_name(smiles)
+                                st.markdown(f"**Name:** `{name}`")
+                                # --- END OF NEW CODE ---
                                 st.markdown(f"**SMILES:** `{smiles}`")
                                 try:
                                     mol = Chem.MolFromSmiles(smiles)
@@ -657,7 +685,7 @@ class DrugDiscoveryApp:
             # 2. Load Toxicity Model (THIS IS NEW)
             toxicity_model = None
             if properties_to_run["Toxicity"]:
-                tox_path = Path("data/models/predictor_toxicity/toxicity_xgb_model.pkl")
+                tox_path = Path("data/models/predictor_multitask_toxicity/toxicity_multitask_model.pkl")
                 if tox_path.exists():
                     toxicity_model = joblib.load(tox_path)
                 else:
@@ -695,8 +723,14 @@ class DrugDiscoveryApp:
                         if properties_to_run["Toxicity"] and toxicity_model:
                             fp = self.get_fingerprint(smiles)
                             if fp is not None:
-                                pred = toxicity_model.predict(fp)[0]
-                                mol_results["Toxicity"] = "⚠️ Toxic" if pred == 1 else "✅ Safe"
+                                # model.predict(fp) returns an array of arrays, e.g., [[0, 1, 0, ...]]
+                                all_task_preds = toxicity_model.predict(fp)[0]
+
+                                # Check if *any* of the 12 tasks predicted "Toxic"
+                                if np.sum(all_task_preds) > 0:
+                                    mol_results["Toxicity"] = f"⚠️ Toxic (Fails {int(np.sum(all_task_preds))}/12 tasks)"
+                                else:
+                                    mol_results["Toxicity"] = "✅ Safe (Passes all 12 tasks)"
                             else:
                                 mol_results["Toxicity"] = "Error"
                         
@@ -822,17 +856,19 @@ class DrugDiscoveryApp:
                 # --- END OF NEW PAINS CODE ---
                 # Toxicity Check
                 st.markdown("### ☠️ Toxicity Model Prediction")
-                tox_path = Path("data/models/predictor_toxicity/toxicity_xgb_model.pkl")
+                tox_path = Path("data/models/predictor_multitask_toxicity/toxicity_multitask_model.pkl")
                 if tox_path.exists():
                     model = joblib.load(tox_path)
                     fp = self.get_fingerprint(final_smiles_to_analyze)
                     if fp is not None:
-                        pred = model.predict(fp)[0]
-                        probs = model.predict_proba(fp)[0]
-                        if pred == 1:
-                            st.error(f"**Prediction: TOXIC** (Confidence: {probs[1]:.1%})")
+                        # model.predict(fp) returns an array of arrays, e.g., [[0, 1, 0, ...]]
+                        all_task_preds = model.predict(fp)[0]
+
+                        # Check if *any* of the 12 tasks predicted "Toxic"
+                        if np.sum(all_task_preds) > 0:
+                            st.error(f"**Prediction: TOXIC** (Fails {int(np.sum(all_task_preds))}/12 tasks)")
                         else:
-                            st.success(f"**Prediction: SAFE** (Confidence: {probs[0]:.1%})")
+                            st.success("**Prediction: SAFE** (Passes all 12 tasks)")
                     else:
                         st.warning("Cannot predict: Invalid SMILES.")
                 else:
