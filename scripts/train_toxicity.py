@@ -40,13 +40,9 @@ def train_toxicity_model(data_path: Path, output_dir: Path):
     logger.info(f"Loading training data from {data_path}")
 
     try:
-        # Load the gzipped CSV file
         df = pd.read_csv(data_path, compression='gzip')
-        # We will train on the "NR-AR" assay (a common toxicity marker)
-        # We drop any rows where this task wasn't measured
         df = df[['smiles', 'NR-AR']].dropna()
         df = df.rename(columns={'NR-AR': 'is_toxic'})
-        # Convert float (0.0, 1.0) to integer (0, 1)
         df['is_toxic'] = df['is_toxic'].astype(int)
     except Exception as e:
         logger.error(f"Failed to load real Tox21 data: {e}. Exiting.")
@@ -56,24 +52,21 @@ def train_toxicity_model(data_path: Path, output_dir: Path):
 
     logger.info("Generating fingerprints...")
     df['fp'] = df['smiles'].apply(get_fingerprint)
-    df = df.dropna() # Remove any SMILES that failed fingerprinting
+    df = df.dropna()
 
-    # Prepare data
     X = np.array(df['fp'].tolist())
     y = df['is_toxic'].values
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # --- START OF NEW FIX ---
-    # Calculate the imbalance ratio to fix our "lazy" model
-    # (Count of Safe) / (Count of Toxic)
+    # --- THIS IS THE GOOD FIX (scale_pos_weight) ---
     try:
         scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
         logger.info(f"Dataset is imbalanced. Using scale_pos_weight: {scale_pos_weight:.2f}")
     except ZeroDivisionError:
         logger.warning("No toxic samples in training set. Using default weight.")
         scale_pos_weight = 1
-    # --- END OF NEW FIX ---
+    # --- END OF FIX ---
 
     logger.info(f"Training XGBoost Classifier on {len(X_train)} samples...")
 
@@ -81,19 +74,18 @@ def train_toxicity_model(data_path: Path, output_dir: Path):
         n_estimators=100, 
         learning_rate=0.1, 
         max_depth=6,
-        use_label_encoder=False, # This is deprecated anyway
+        use_label_encoder=False,
         eval_metric='logloss',
-        device='cuda', # <-- USE THE GPU!
-        scale_pos_weight=scale_pos_weight  # <-- NEW: Handle class imbalance
+        device='cuda',
+        scale_pos_weight=scale_pos_weight  # <-- We are using the correct fix
     )
-    model.fit(X_train, y_train)
+    
+    model.fit(X_train, y_train) 
 
     # --- Test model ---
     preds = model.predict(X_test)
     acc = accuracy_score(y_test, preds)
-    # Get the report as a string to print
     report_str = classification_report(y_test, preds)
-    # Get the report as a dictionary to save
     report_dict = classification_report(y_test, preds, output_dict=True)
 
     logger.info(f"Model Accuracy on test set: {acc:.2%}")
@@ -105,11 +97,11 @@ def train_toxicity_model(data_path: Path, output_dir: Path):
     joblib.dump(model, save_path)
     logger.info(f"✓ Toxicity Model saved to {save_path}")
 
-    # --- NEW: Save metrics to JSON ---
+    # --- Save metrics to JSON ---
     metrics = {
         "accuracy": acc,
         "classification_report": report_dict,
-        "n_samples_train": len(X_train),
+        "n_samples_train": len(X_train), # Use original train size
         "n_samples_test": len(X_test)
     }
     metrics_path = output_dir / "toxicity_model_metrics.json"

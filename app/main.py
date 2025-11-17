@@ -270,22 +270,61 @@ class DrugDiscoveryApp:
             "Pass": violations <= 1
         }
 
-    def check_pains(self, mol):
+    @st.cache_resource
+    def get_pains_list(_self):
         """
-        Checks a molecule against the PAINS filter.
-        Returns (True, "FilterName") if it matches a PAINS structure.
+        Loads the PAINS SMILES list from our text file,
+        canonicalizes them, and saves to a Set.
         """
-        # Initialize the PAINS filter catalog (we cache this)
-        if not hasattr(self, 'pains_catalog'):
-            params = rdkit.Chem.FilterCatalog.FilterCatalogParams()
-            params.AddCatalog(rdkit.Chem.FilterCatalog.FilterCatalogParams.FilterCatalogs.PAINS)
-            self._pains_catalog = rdkit.Chem.FilterCatalog.FilterCatalog(params)
-        
-        entry = self._pains_catalog.GetFirstMatch(mol)
-        if entry:
-            return (True, entry.GetDescription()) # (IsPAINS, FilterName)
+        pains_file = Path("data/raw/pains_smiles_list.txt")
+        if not pains_file.exists():
+            logger.error("PAINS list file not found!")
+            return set()
+
+        logger.info("Initializing and Caching Canonical PAINS list...")
+        pains_set = set()
+        with open(pains_file, 'r') as f:
+            for line in f:
+                smiles = line.strip()
+                if not smiles:
+                    continue
+
+                # --- THIS IS THE FIX ---
+                # Canonicalize every SMILES from the file
+                try:
+                    mol = Chem.MolFromSmiles(smiles)
+                    if mol:
+                        canonical_smiles = Chem.MolToSmiles(mol, canonical=True)
+                        pains_set.add(canonical_smiles)
+                    else:
+                        logger.warning(f"Invalid PAINS SMILES in list: {smiles}")
+                except Exception as e:
+                    logger.warning(f"Error canonicalizing PAINS SMILES {smiles}: {e}")
+                # --- END OF FIX ---
+
+        logger.info(f"Loaded {len(pains_set)} canonical exact-match PAINS molecules.")
+        return pains_set
+
+    def check_pains_exact(self, smiles_to_check: str):
+        """
+        Checks if a SMILES string is an exact match in our PAINS list.
+        """
+        pains_set = self.get_pains_list()
+
+        # Canonicalize the input SMILES to be 100% sure
+        try:
+            mol = Chem.MolFromSmiles(smiles_to_check)
+            if not mol:
+                return (False, "N/A") # Invalid SMILES, not a PAINS match
+
+            canonical_smiles = Chem.MolToSmiles(mol, canonical=True)
+        except Exception:
+            return (False, "N/A") # RDKit fails, can't check
+
+        if canonical_smiles in pains_set:
+            return (True, "Exact Match in PAINS List")
         else:
-            return (False, "N/A") # (IsPAINS, FilterName)
+            return (False, "N/A")
 
     def render_header(self):
         """Render the application header."""
@@ -773,7 +812,7 @@ class DrugDiscoveryApp:
                     if not mol:
                         st.warning("Cannot calculate: Invalid SMILES.")
                     else:
-                        is_pains, filter_name = self.check_pains(mol)
+                        is_pains, filter_name = self.check_pains_exact(final_smiles_to_analyze)
                         if is_pains:
                             st.error(f"**Alert:** This molecule matches the PAINS filter: **{filter_name}**")
                             st.caption("PAINS (Pan-Assay Interference Compounds) are known to cause false positives in high-throughput screens.")
