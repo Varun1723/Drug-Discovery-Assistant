@@ -41,7 +41,7 @@ A production-ready AI-powered drug discovery platform that integrates molecular 
 
 ## 🚀 **Quick Start**
 
-### **Installation**
+### **Option A: Build Locally**
 
 ```bash
 # 1. Clone the repository
@@ -57,6 +57,20 @@ pip install -r requirements.txt
 
 # 4. Launch the application
 streamlit run app/main.py
+```
+### **Option B: Using Docker**
+```bash
+# 1. Pull the Docker image from Docker Hub
+docker pull pegasus1723/drug-discovery:latest
+
+# 2. Run the application (GPU-enabled)
+docker run --gpus all -p 8501:8501 --name drug-discovery pegasus1723/drug-discovery:latest
+
+# 2. Run the application (CPU-only)
+docker run -p 8501:8501 --name drug-discovery pegasus1723/drug-discovery:latest
+
+# 3. Open in browser
+# http://localhost:8501
 ```
 
 ### **System Requirements**
@@ -253,27 +267,6 @@ Diversity Metrics:
 
 ---
 
-## 🔬 **Use Cases**
-
-### **Academic Research**
-- Virtual screening for early-stage drug discovery
-- Educational tool for computational chemistry courses
-- Benchmarking platform for new generative models
-- Rapid prototyping of molecular hypotheses
-
-### **Small Biotech Companies**
-- Resource-constrained lead optimization
-- Property-based molecular filtering
-- Toxicity pre-screening before synthesis
-- Cost-effective virtual libraries
-
-### **Developing Economies**
-- Accessible AI drug discovery without enterprise infrastructure
-- Local deployment for data privacy
-- Offline operation capability
-- Open-source modification and customization
-
----
 
 ## 🎓 **Scientific Contributions**
 
@@ -304,37 +297,6 @@ Diversity Metrics:
 
 ---
 
-## 🔮 **Future Directions**
-
-### **Short-Term (Next 6 months)**
-- Address MW bias through dataset scaling (ChEMBL: 1.9M molecules)
-- Architecture comparison (LSTM vs lightweight Transformer)
-- Multi-objective reinforcement learning for property optimization
-- User studies with medicinal chemists
-
-### **Medium-Term (1-2 years)**
-- Graph Neural Network integration for improved predictions
-- Active learning workflows with experimental feedback
-- Molecular docking integration (AutoDock Vina)
-- Cloud deployment (Docker/Kubernetes)
-
-### **Long-Term (3-5 years)**
-- Foundation model fine-tuning (LoRA, prefix tuning)
-- Multimodal learning (SMILES + graphs + 3D conformations)
-- Experimental validation with synthesis partners
-- Regulatory pathway exploration (FDA Computer Software Assurance)
-
----
-
-## 📚 **Documentation**
-
-- **Setup Guide**: `app/SETUP-GUIDE.md` - Detailed installation instructions
-- **Research Paper**: See `outputs/` for empirical results and visualizations
-- **Code Documentation**: Inline comments and docstrings throughout `src/`
-- **Test Suite**: `tests/` for validation examples
-
----
-
 ## 🤝 **Contributing**
 
 We welcome contributions from the community! Areas of interest:
@@ -355,7 +317,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ### **Open Source Philosophy**
 
-- ✅ Free to use, modify, and distribute
+- ✅ Free to use
 - ✅ No vendor lock-in or proprietary dependencies
 - ✅ Transparent algorithms and training procedures
 - ✅ Community-driven development
